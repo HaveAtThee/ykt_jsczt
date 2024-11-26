@@ -3,7 +3,9 @@ from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
 import json
-
+import pandas as pd
+from time import sleep
+import os
 class ykt_bonus_info_fetcher:
     def __init__(self):
         pass
@@ -24,6 +26,7 @@ class ykt_bonus_info_fetcher:
         # 打开目标页面
         driver.get("http://ykt.jsczt.cn/#/policy")
         driver.implicitly_wait(10)
+        sleep(3)
         # 获取性能日志并提取所有请求的 URL
         performance_log = driver.get_log("performance")
 
@@ -90,7 +93,7 @@ class ykt_bonus_info_fetcher:
         }
         response = requests.post(url, headers=headers, data=data)
         self.region_json = response.json()["data"]["data"]
-        print(self.region_json)
+        print("已获取到各地区区号及名称： ",self.region_json)
     def get_policy_list(self,admDivCode):
         headers = {
             "Accept": "application/json, text/plain, */*",
@@ -127,12 +130,69 @@ class ykt_bonus_info_fetcher:
         }
         url = "http://ykt.jsczt.cn/yktffjk/zcxxContent"
         response = requests.post(url, headers=headers, data=data)
-        self.policy_list = response.json()["data"]["data"]
-        print(response.text)
+        self.policy_content = response.json()["data"]["data"][0]
+    def analyse_region_code(self,xlsxpath):
+        self.xlsxpath = xlsxpath
+        self.region_df = {
+            '地区': [],
+            '区号': [],
+        }
+        self.region_df = pd.DataFrame(self.region_df)
+        for region in self.region_json:
+            new_row = {'地区': region["ADM_DIV_NAME"], '区号': region["ADM_DIV_CODE"]}
+            self.region_df = pd.concat([self.region_df, pd.DataFrame([new_row])], ignore_index=True)
+        self.region_df.to_excel(self.xlsxpath,index=False)
+    def get_policy_list_by_regiondf(self,policy_detail_df_path):
+        if os.path.exists(policy_detail_df_path) :
+            self.policy_detail_df = pd.read_excel(policy_detail_df_path)
+        else:
+            columns = ["城市","地区","政策id","补贴项目","补贴简称","政策级次","政策文件","补贴对象","补贴标准","主管部门","联系方式"]
+            self.policy_detail_df = pd.DataFrame(columns=columns)
+        self.region_df = pd.read_excel(self.xlsxpath,index_col=None)
+        city = ""
+        for index in range(len(self.region_df)): #按地区进行遍历
+            if self.region_df.iloc[index]["是否已经记录政策"] == "是":
+                continue
+            region_name = self.region_df.iloc[index]["地区"]
+            if "本级" in region_name:
+                city = region_name.replace("本级", "")
+            region_code = self.region_df.iloc[index]["区号"]
+            self.get_policy_list(region_code)
+            for policy_unit in self.policy_list:#按地区里的政策进行遍历
+
+                print(policy_unit)
+                policy_uuid = policy_unit["UUID"]
+                if policy_uuid in self.policy_detail_df['政策id'].values:
+                    #如果已记录此政策则跳过
+                    continue
+                else:
+
+                    self.get_policy_content(policy_uuid)
+                    print(self.policy_content)
+                    new_row ={"城市":city, "地区":region_name, "政策id":policy_uuid,
+                     "补贴项目":self.policy_content["SUB_PROJ_NAME"],
+                     "补贴简称":self.policy_content["SUB_PROJ_SHORT_NAME"],
+                     "政策级次":self.policy_content["POL_TYP"],
+                     "政策文件":self.policy_content["POL_BASIS"],
+                     "补贴对象":self.policy_content["SUB_TARGET"],
+                     "补贴标准":self.policy_content["SUB_NATI_CRI"],
+                     "主管部门":self.policy_content["AGENCY_NAME"],
+                    "联系方式":self.policy_content["LXFS"], }
+                    self.policy_detail_df = pd.concat([self.policy_detail_df, pd.DataFrame([new_row])], ignore_index=True)
+                    sleep(0.2)
+
+            self.region_df.loc[index,"是否已经记录政策"] = "是"
+            self.policy_detail_df.to_excel(policy_detail_df_path)
+            self.region_df.to_excel(self.xlsxpath)
+
 
 if __name__ =="__main__":
     fetcher = ykt_bonus_info_fetcher()
     fetcher.get_siganture()
-    fetcher.get_js_region()
-    fetcher.get_policy_list(320000)
-    fetcher.get_policy_content("1CE00A51BD7E3B94E0635D1A1223645C")
+    # fetcher.get_js_region()
+    # fetcher.analyse_region_code("regioncode.xlsx")
+    fetcher.xlsxpath = "regioncode.xlsx"
+    fetcher.get_policy_list_by_regiondf("policy_detail_df.xlsx")
+
+    # fetcher.get_policy_list(320000)
+    # fetcher.get_policy_content("1CE00A51BD7E3B94E0635D1A1223645C")
