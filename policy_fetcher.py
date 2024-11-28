@@ -144,7 +144,7 @@ class ykt_bonus_info_fetcher:
         self.region_df.to_excel(self.xlsxpath,index=False)
     def get_policy_list_by_regiondf(self,policy_detail_df_path):
         if os.path.exists(policy_detail_df_path) :
-            self.policy_detail_df = pd.read_excel(policy_detail_df_path)
+            self.policy_detail_df = pd.read_excel(policy_detail_df_path,ignore_index=False)
         else:
             columns = ["城市","地区","政策id","补贴项目","补贴简称","政策级次","政策文件","补贴对象","补贴标准","主管部门","联系方式"]
             self.policy_detail_df = pd.DataFrame(columns=columns)
@@ -182,7 +182,7 @@ class ykt_bonus_info_fetcher:
                     sleep(0.2)
 
             self.region_df.loc[index,"是否已经记录政策"] = "是"
-            self.policy_detail_df.to_excel(policy_detail_df_path)
+            self.policy_detail_df.to_excel(policy_detail_df_path,index_col=None)
             self.region_df.to_excel(self.xlsxpath)
 
 
